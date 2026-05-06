@@ -1,0 +1,82 @@
+name: Deploy BookVault
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            us-east-1
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/bookvault:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/bookvault:$IMAGE_TAG
+          echo "IMAGE=$ECR_REGISTRY/bookvault:$IMAGE_TAG" >> $GITHUB_ENV
+
+      - name: Deploy to app server via bastion
+        env:
+          BASTION_IP:       ${{ secrets.BASTION_IP }}
+          APP_SERVER_IP:    ${{ secrets.APP_SERVER_IP }}
+          SSH_PRIVATE_KEY:  ${{ secrets.SSH_PRIVATE_KEY }}
+          ECR_REGISTRY:     ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG:        ${{ github.sha }}
+          AWS_REGION:       us-east-1
+        run: |
+          # Write SSH key to file
+          echo "$SSH_PRIVATE_KEY" > bookvault.pem
+          chmod 400 bookvault.pem
+
+          # SSH through bastion into app server and deploy
+          ssh -i bookvault.pem \
+              -o StrictHostKeyChecking=no \
+              -o ProxyCommand="ssh -i bookvault.pem -o StrictHostKeyChecking=no -W %h:%p ubuntu@$BASTION_IP" \
+              ubuntu@$APP_SERVER_IP << EOF
+
+            # Install Docker if not installed
+            if ! command -v docker &> /dev/null; then
+              sudo apt update && sudo apt install -y docker.io
+              sudo systemctl start docker
+              sudo systemctl enable docker
+              sudo usermod -aG docker ubuntu
+            fi
+
+            # Login to ECR
+            aws ecr get-login-password --region $AWS_REGION | \
+              sudo docker login --username AWS --password-stdin $ECR_REGISTRY
+
+            # Pull new image
+            sudo docker pull $ECR_REGISTRY/bookvault:$IMAGE_TAG
+
+            # Stop and remove old container
+            sudo docker stop bookvault || true
+            sudo docker rm bookvault || true
+
+            # Run new container
+            sudo docker run -d \
+              --name bookvault \
+              --restart always \
+              -p 3000:3000 \
+              --env-file /home/ubuntu/.env \
+              $ECR_REGISTRY/bookvault:$IMAGE_TAG
+
+          EOF
