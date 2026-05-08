@@ -122,16 +122,25 @@ resource "aws_security_group_rule" "app_egress_docdb" {
     security_group_id        = aws_security_group.app_bv_sg.id
 }
 
-resource "aws_security_group_rule" "app_egress_s3" {
+resource "aws_security_group_rule" "app_egress_https" {
     type              = "egress"
-    description       = "Allow outbound to S3 via VPC Endpoint"
+    description       = "Allow outbound HTTPS via NAT"
     from_port         = 443
     to_port           = 443
     protocol          = "tcp"
-    prefix_list_ids = [aws_vpc_endpoint.s3_endpoint.prefix_list_id]
+    cidr_blocks       = ["0.0.0.0/0"]
     security_group_id = aws_security_group.app_bv_sg.id
 }
 
+resource "aws_security_group_rule" "app_egress_http" {
+    type              = "egress"
+    description       = "Allow outbound HTTP via NAT"
+    from_port         = 80
+    to_port           = 80
+    protocol          = "tcp"
+    cidr_blocks       = ["0.0.0.0/0"]
+    security_group_id = aws_security_group.app_bv_sg.id
+}
 
 
 resource "aws_security_group_rule" "rds_ingress_app" {
@@ -165,9 +174,10 @@ resource "aws_security_group_rule" "bastion_ingress_ssh" {
     from_port         = 22
     to_port           = 22
     protocol          = "tcp"
-    cidr_blocks       = ["102.90.115.65/32"]
+    cidr_blocks       = ["102.90.96.188/32"]
     security_group_id = aws_security_group.bastion_bv_sg.id
 }
+
 
 resource "aws_security_group_rule" "bastion_egress_app" {
     type                     = "egress"
