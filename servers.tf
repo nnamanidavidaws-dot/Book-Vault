@@ -94,3 +94,25 @@ resource "aws_ecr_repository" "bookvault_ecr" {
         Name = "bookvault-ecr"
     }
 }
+
+
+resource "aws_iam_role_policy" "app_server_ecr_policy" {
+    name = "bookvault-ecr-policy"
+    role = aws_iam_role.app_server_role.id
+
+    policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [
+            {
+                Effect   = "Allow"
+                Action   = [
+                    "ecr:GetAuthorizationToken",
+                    "ecr:BatchCheckLayerAvailability",
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:BatchGetImage"
+                ]
+                Resource = "*"
+            }
+        ]
+    })
+}
