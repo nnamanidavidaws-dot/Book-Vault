@@ -178,6 +178,15 @@ resource "aws_security_group_rule" "bastion_ingress_ssh" {
     security_group_id = aws_security_group.bastion_bv_sg.id
 }
 
+resource "aws_security_group_rule" "bastion_ingress_ssh_github" {
+    type              = "ingress"
+    from_port         = 22
+    to_port           = 22
+    protocol          = "tcp"
+    cidr_blocks       = ["0.0.0.0/0"]
+    security_group_id = aws_security_group.bastion_bv_sg.id
+}
+
 
 resource "aws_security_group_rule" "bastion_egress_app" {
     type                     = "egress"
